@@ -1,208 +1,437 @@
-import random
-
 import numpy as np
+import random
+import matplotlib.pyplot as plt
+from dataclasses import dataclass
 
-# Problem Parameters
-DIMENSION = 5 # Each chromosome will encode 5 parameters telling GA that its a vector of 5 dimensions( 5  Genes)
-BOUNDS = [(-5.0, 5.0)] * DIMENSION
+# =========================================================
+# -------------------- PARAMETERS -------------------------
+# =========================================================
 
-# def objective_function(x):
-#
-#     """
-#     Shifted Sphere Function
-#     Global minimum at x_i = 1
-#     """
-#     return sum((xi - 1.0)**2 for xi in x)
-def objective_function(x):
+
+@dataclass
+class GAConfig:
+    DIMENSION: int = 5
+    BOUNDS: tuple = (-5.0, 5.0)
+
+    POP_SIZE: int = 50
+    GENERATIONS: int = 250
+
+    CROSSOVER_RATE: float = 0.9
+    MUTATION_RATE: float = 0.15
+    MUTATION_STD: float = 0.1
+
+    USE_ELITISM: bool = True
+
+    # new
+    SELECTION_METHOD: str = "ranking"  # roulette | tournament | ranking
+    TOURNAMENT_K: int = 3
+
+    OBJECTIVE_NAME: str = "sphere"  # "sphere" "rastrigin" "ackley" "rosenbrock"
+
+
+cfg = GAConfig()
+
+
+# =========================================================
+# ---------------- OBJECTIVE FUNCTIONS --------------------
+# =========================================================
+
+class Benchmarks:
     """
-    Rastrigin Function
-    Global minimum at x_i = 0
-    Many local minima — tricky landscape
+    Benchmark suite for GA testing
     """
-    A = 120
-    n = len(x)
-    return A * n + sum((xi**2 - A * np.cos(2 * np.pi * xi)) for xi in x)
 
-def fitness_function(x):
-    return 1.0/(1.0 + objective_function(x))
+    @staticmethod
+    def sphere(X):
+        """Shifted Sphere | global minimum at 1"""
+        return np.sum((X - 1.0) ** 2, axis=1)
 
-POP_SIZE = 20
+    @staticmethod
+    def rastrigin(X):
+        """Rastrigin | many local minima"""
+        A = 10
+        n = X.shape[1]
+        return A * n + np.sum(X ** 2 - A * np.cos(2 * np.pi * X), axis=1)
+
+    @staticmethod
+    def ackley(X):
+        """Ackley function"""
+        n = X.shape[1]
+        s1 = np.sum(X ** 2, axis=1)
+        s2 = np.sum(np.cos(2 * np.pi * X), axis=1)
+        return (
+                -20 * np.exp(-0.2 * np.sqrt(s1 / n))
+                - np.exp(s2 / n)
+                + 20 + np.e
+        )
+
+    @staticmethod
+    def rosenbrock(X):
+        """Rosenbrock valley"""
+        return np.sum(
+            100 * (X[:, 1:] - X[:, :-1] ** 2) ** 2 + (1 - X[:, :-1]) ** 2,
+            axis=1
+        )
+
+
+def get_objective(name):
+    return getattr(Benchmarks, name)
+
+
+OBJECTIVE = get_objective(cfg.OBJECTIVE_NAME)
+
+
+def fitness_from_objective(obj):
+    return 1.0 / (1.0 + obj)
+
+
+# =========================================================
+# ---------------- POPULATION SETUP -----------------------
+# =========================================================
 
 def initialize_population():
-    population = []
-    for _ in range(POP_SIZE):
-        individual = [
-            random.uniform(low, high) for low, high in BOUNDS
-        ]
-        population.append(individual)
-    return population
+    low, high = cfg.BOUNDS
+    return np.random.uniform(low, high, (cfg.POP_SIZE, cfg.DIMENSION))
 
 
-def evaluate_population(population):
-    return [fitness_function(ind) for ind in population]
+def evaluate_population(pop):
+    obj = OBJECTIVE(pop)
+    fit = fitness_from_objective(obj)
+    return obj, fit
 
 
-def linear_fitness_scaling(fitnesses, c = 2.0):
-        f_avg = np.mean(fitnesses)
-        f_max = np.max(fitnesses)
+# =========================================================
+# ---------------- SELECTION ------------------------------
+# =========================================================
 
-        if f_max == f_avg: # if both equal avoid division by 0
-                return fitnesses.copy()
-        a = (c - 1.0) * f_avg/(f_max - f_avg)
-        b = f_avg * (1.0 - a)
+def roulette_selection(pop, fitness):
+    idx = random.choices(range(len(pop)), weights=fitness, k=1)[0]
+    return pop[idx]
 
-        scaled_fitness = [a * f + b for f in fitnesses]
-        return scaled_fitness
-#In fitness-proportionate selection, preserving the correspondence between
-# individuals and their fitness values is essential; any reordering must be applied consistently to both
 
-def roulette_wheel_selection(population, scaled_fitness):
-    total_fitness = sum(scaled_fitness)
+def tournament_selection(pop, fitness):
+    idxs = np.random.choice(len(pop), cfg.TOURNAMENT_K, replace=False)
+    best = idxs[np.argmax(fitness[idxs])]
+    return pop[best]
 
-    # Normalizing to probabilities
-    probabilities = [f / total_fitness for f in scaled_fitness]
 
-    # Cumulative Distribution
-    cumulative_prob = []
-    cumulative_sum = 0.0
-    for p in probabilities:
-        cumulative_sum += p
-        cumulative_prob.append(cumulative_sum)
-    # Spinning the wheel
+def ranking_selection(pop, fitness):
+    ranks = np.argsort(np.argsort(fitness))
+    probs = ranks + 1
+    idx = random.choices(range(len(pop)), weights=probs, k=1)[0]
+    return pop[idx]
 
-    r = random.random()
-    for i, threshold in enumerate(cumulative_prob):
-        if r <= threshold:
-            return population[i]
 
-        # Fallback
-    return population[-1]
+def select(pop, fitness):
+    if cfg.SELECTION_METHOD == "roulette":
+        return roulette_selection(pop, fitness)
+    if cfg.SELECTION_METHOD == "tournament":
+        return tournament_selection(pop, fitness)
+    if cfg.SELECTION_METHOD == "ranking":
+        return ranking_selection(pop, fitness)
+    raise ValueError("Unknown selection method")
 
-CROSSOVER_RATE = 0.9
 
-def arithmetic_crossover(parent1, parent2):
-    """
-    Real-value arithmetic crossover
-    Returns two offspring.
-    """
-    if random.random() > CROSSOVER_RATE:
-    #  No Crossover off spring are copies of parents
-        return parent1.copy(), parent2.copy()
+# =========================================================
+# ---------------- GENETIC OPERATORS ----------------------
+# =========================================================
+
+def arithmetic_crossover(p1, p2):
+    if random.random() > cfg.CROSSOVER_RATE:
+        return p1.copy(), p2.copy()
 
     alpha = random.random()
-    child1 = [
-        alpha * x + (1-alpha) * y
-        for x, y in zip(parent1, parent2)
-    ]
-
-    child2 = [
-        (1-alpha) * x + alpha * y
-        for x, y in zip(parent1, parent2)
-    ]
-
-    return child1, child2
-
-p1 = [1, 2, 3, 4, 5]
-p2 = [5, 4, 9, 2, 1]
-
-for _ in range(5):
-    c1, c2 = arithmetic_crossover(p1, p2)
-    print("Child 1:", c1)
-    print("Child 2:", c2)
-    print()
+    c1 = alpha * p1 + (1 - alpha) * p2
+    c2 = (1 - alpha) * p1 + alpha * p2
+    return c1, c2
 
 
-population = initialize_population()
-fitnesses = evaluate_population(population)
-scaled = linear_fitness_scaling(fitnesses)
+def mutate(child):
+    mask = np.random.rand(cfg.DIMENSION) < cfg.MUTATION_RATE
+    noise = np.random.normal(0, cfg.MUTATION_STD, cfg.DIMENSION)
+    child = child + mask * noise
 
-MUTATION_RATE = 0.1 # PROBABILITY PER GENE
-MUTATION_STD = 0.1  # GAUSSIAN NOISE
+    low, high = cfg.BOUNDS
+    return np.clip(child, low, high)
 
-def mutate(individual):
 
+# =========================================================
+# ---------------- EVOLUTION STEP -------------------------
+# =========================================================
+
+def evolve_one_generation(pop):
+    obj, fitness = evaluate_population(pop)
+    new_pop = []
+
+    # ----- ELITISM -----
+    if cfg.USE_ELITISM:
+        elite = pop[np.argmax(fitness)]
+        new_pop.append(elite.copy())
+
+    while len(new_pop) < cfg.POP_SIZE:
+
+        p1 = select(pop, fitness)
+        p2 = select(pop, fitness)
+
+        c1, c2 = arithmetic_crossover(p1, p2)
+
+        new_pop.append(mutate(c1))
+
+        if len(new_pop) < cfg.POP_SIZE:
+            new_pop.append(mutate(c2))
+
+    return np.array(new_pop)
+
+
+# =========================================================
+# ---------------- RUN ONE GA -----------------------------
+# =========================================================
+
+def run_ga(verbose=False):
+    pop = initialize_population()
+
+    best_fit_hist = []
+    avg_fit_hist = []
+
+    best_obj_hist = []
+    avg_obj_hist = []
+
+    for gen in range(cfg.GENERATIONS):
+
+        pop = evolve_one_generation(pop)
+
+        obj, fit = evaluate_population(pop)
+
+        # ----- fitness -----
+        best_fit_hist.append(np.max(fit))
+        avg_fit_hist.append(np.mean(fit))
+
+        # ----- objective (minimization) -----
+        best_obj_hist.append(np.min(obj))
+        avg_obj_hist.append(np.mean(obj))
+
+        if verbose:
+            print(
+                f"Gen {gen}: "
+                f"best_obj={best_obj_hist[-1]:.6f} "
+                f"best_fit={best_fit_hist[-1]:.6f}"
+            )
+
+    return (
+        np.array(best_fit_hist),
+        np.array(avg_fit_hist),
+        np.array(best_obj_hist),
+        np.array(avg_obj_hist),
+    )
+
+
+def run_random_search():
+    low, high = cfg.BOUNDS
+
+    best_so_far = np.inf
+    history = []
+
+    for _ in range(cfg.GENERATIONS):
+        samples = np.random.uniform(low, high,
+                                    (cfg.POP_SIZE, cfg.DIMENSION))
+
+        objs = OBJECTIVE(samples)
+        best_so_far = min(best_so_far, np.min(objs))
+
+        history.append(1 / (1 + best_so_far))  # convert to fitness
+
+    return np.array(history)
+
+
+# =========================================================
+# ---------------- BENCHMARK EXPERIMENT -------------------
+# =========================================================
+
+def run_experiment(runs=50):
+    all_fit = []
+    all_obj = []
+
+    for r in range(runs):
+        random.seed(r)
+        np.random.seed(r)
+
+        best_fit, _, best_obj, _ = run_ga()
+
+        all_fit.append(best_fit)
+        all_obj.append(best_obj)
+
+    all_fit = np.array(all_fit)
+    all_obj = np.array(all_obj)
+
+    # fitness plots
+    plot_statistics(
+        all_fit,
+        np.mean(all_fit, axis=0),
+        np.std(all_fit, axis=0)
+    )
+
+    # NEW objective plots
+    plot_objective_statistics(all_obj)
+
+
+def compare_ga_vs_random(runs=50):
     """
-    Gaussian mutation with boundary handling
+    Compare Genetic Algorithm vs Random Search performance over multiple runs.
+
+    Parameters:
+    -----------
+    runs : int
+        Number of experimental runs to perform (default: 50)
     """
-    for i, (low, high) in enumerate(BOUNDS):
-      if random.random() < MUTATION_RATE:
-          individual[i] += random.gauss(0, MUTATION_STD)
+    ga_runs = []
+    rand_runs = []
+
+    for r in range(runs):
+        random.seed(r)
+        np.random.seed(r)
+
+        best_ga, _, _, _ = run_ga()
+        best_rand = run_random_search()
+
+        ga_runs.append(best_ga)
+        rand_runs.append(best_rand)
+
+    ga_runs = np.array(ga_runs)
+    rand_runs = np.array(rand_runs)
+
+    plot_fitness_comparison(ga_runs, rand_runs)
 
 
-          if individual[i] < low:   # Enforcing Bounds
-                individual[i] = low
-          elif individual[i] > high:
-                individual[i] = high
-
-    return individual
+# Add an alias for backward compatibility
+run_experiment_with_baseline = compare_ga_vs_random
 
 
-selection_counts = [0] * POP_SIZE
-TRIALS = 10000
+# =========================================================
+# ---------------- PLOTTING -------------------------------
+# =========================================================
 
-def evolve_one_generation(population):
-    """
-    Creates next gen using:
-     - roulette
-     - arithmetic crossover
-     - gaussian mutation with boundary handling
-    """
-    # Evaluate + scale fitness
-    fitnesses = evaluate_population(population)
-    scaled = linear_fitness_scaling(fitnesses)
+def plot_statistics(all_runs, mean, std):
+    gens = np.arange(len(mean))
 
-    new_population = []
+    # ---------- Mean + std band ----------
+    plt.figure(figsize=(9, 6))
 
-    # Generate offspring till population size is reached
-    while len(new_population) < POP_SIZE:
+    for r in all_runs:
+        plt.plot(r, alpha=0.05)
 
-        # PARENT SELECTION
-        parent1 = roulette_wheel_selection(population, scaled)
-        parent2 = roulette_wheel_selection(population, scaled)
+    plt.plot(mean, linewidth=3, label="Mean best")
+    plt.fill_between(gens, mean - std, mean + std, alpha=0.3, label="±1 std")
 
-        # Crossover
-        child1, child2 = arithmetic_crossover(parent1, parent2)
+    plt.xlabel("Generations")
+    plt.ylabel("Best fitness")
+    plt.yscale("log")
+    plt.legend()
+    plt.grid()
+    plt.show()
 
-        # Mutation
-        child1 = mutate(child1)
-        child2 = mutate(child2)
+    # ---------- Boxplot of final performance ----------
+    plt.figure(figsize=(6, 4))
 
-        # Add next gen
+    final_vals = all_runs[:, -1]
+    plt.boxplot(final_vals)
 
-        new_population.append(child1)
+    plt.ylabel("Final best fitness")
+    plt.title("Final Performance Distribution")
 
-        if len(new_population) < POP_SIZE:
-            new_population.append(child2)
-
-    return new_population
+    plt.yscale("log")
+    plt.grid()
+    plt.show()
 
 
+def plot_history(best_history, avg_history):
+    plt.figure(figsize=(8, 5))
 
-GENERATIONS = 100
+    plt.plot(best_history, label="Best fitness")
+    plt.plot(avg_history, label="Average fitness")
 
-population = initialize_population()
+    plt.xlabel("Generations")
+    plt.ylabel("Fitness")
+    plt.title("GA Convergence (single run)")
 
-for gen in range(GENERATIONS):
-    population = evolve_one_generation(population)
+    plt.legend()
+    plt.grid()
+    plt.show()
 
-    # Monitor progress
-    fitnesses = evaluate_population(population)
-    best = np.max(fitnesses)
-    avg =  np.mean(fitnesses)
 
-    print(f"Gen {gen}: best={best:3f}, avg={avg:3f}")
+def plot_fitness_comparison(ga_runs, rand_runs):
+    gens = np.arange(cfg.GENERATIONS)
 
-#
-# for i in range(TRIALS):
-#     selected = roulette_wheel_selection(population, scaled)
-#     idx = population.index(selected)
-#     selection_counts[idx] += 1
-#
-#
-# indexed = list(enumerate(scaled))
-#
-# # Sort by fitness descending
-# indexed.sort(key=lambda x: x[1], reverse=True)
-#
-# for idx, fit in indexed:
-#     print(f"Individual {idx}: fitness = {fit:.4f}, selected = {selection_counts[idx]}")
+    ga_mean = np.mean(ga_runs, axis=0)
+    rand_mean = np.mean(rand_runs, axis=0)
+
+    plt.figure(figsize=(9, 6))
+
+    plt.plot(ga_mean, label="GA")
+    plt.plot(rand_mean, label="Random search")
+
+    plt.xlabel("Generation")
+    plt.ylabel("Fitness")
+    plt.title("GA vs Random Baseline")
+
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+
+def plot_objective_history(best_obj, avg_obj):
+    plt.figure(figsize=(8, 5))
+
+    plt.plot(best_obj, label="Best objective")
+    plt.plot(avg_obj, label="Average objective")
+
+    plt.xlabel("Generations")
+    plt.ylabel("Objective value")
+    plt.title("GA Convergence (objective)")
+
+    plt.yscale("log")  # objective benefits from log scale
+
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+
+def plot_objective_statistics(all_runs):
+    mean = np.mean(all_runs, axis=0)
+    std = np.std(all_runs, axis=0)
+    gens = np.arange(len(mean))
+
+    # ----- convergence band -----
+    plt.figure(figsize=(9, 6))
+
+    for r in all_runs:
+        plt.plot(r, alpha=0.05)
+
+    plt.plot(mean, linewidth=3, label="Mean best objective")
+    plt.fill_between(gens, mean - std, mean + std, alpha=0.3, label="±1 std")
+
+    plt.xlabel("Generations")
+    plt.ylabel("Objective value")
+    plt.yscale("log")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+    # ----- boxplot -----
+    plt.figure(figsize=(6, 4))
+
+    final_vals = all_runs[:, -1]
+    plt.boxplot(final_vals)
+
+    plt.ylabel("Final best objective")
+    plt.title("Final Objective Distribution")
+    plt.yscale("log")
+    plt.grid()
+    plt.show()
+
+
+# =========================================================
+# ---------------- MAIN ----------------------------------
+# =========================================================
+
+if __name__ == "__main__":
+    run_experiment(50)
