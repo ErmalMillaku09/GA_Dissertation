@@ -5,7 +5,7 @@ from config import GAConfig
 from core import run_ga, run_random_search
 from plots import plot_statistics, plot_objective_statistics, plot_fitness_comparison
 from benchmarks import get_objective
-
+import time
 
 def run_experiment(cfg=None, runs=50):
     """
@@ -259,38 +259,34 @@ def full_ga_study(
         base_cfg=None,
         runs=20
 ):
-    """
-    Full factorial GA study:
-        objective × selection × mutation
+    """Full factorial GA study with logging."""
 
-    Parameters:
-    -----------
-    objectives : list
-        List of objective function names
-    selections : list
-        List of selection methods
-    mutations : list
-        List of mutation rates
-    base_cfg : GAConfig or None
-        Base configuration to use. If None, uses default GAConfig()
-    runs : int
-        Number of runs per combination
-    """
     if base_cfg is None:
         base_cfg = GAConfig()
 
     print("\n====== FULL GA STUDY ======\n")
+    print(f"Objectives: {len(objectives)}")
+    print(f"Selections: {len(selections)}")
+    print(f"Mutations: {len(mutations)}")
+    print(f"Runs per combo: {runs}")
+    print(f"Total combos: {len(objectives) * len(selections) * len(mutations)}")
+    print(f"Total GA runs: {len(objectives) * len(selections) * len(mutations) * runs}")
+    print("-" * 50)
+
+    total_evaluations = 0
+    start_time = time.time()
 
     summary = []
 
-    for obj_name in objectives:
-        print(f"\n### Objective: {obj_name} ###")
+    for obj_idx, obj_name in enumerate(objectives):
+        print(f"\n### Objective {obj_idx + 1}/{len(objectives)}: {obj_name} ###")
 
         best_score = -np.inf
         best_combo = None
 
-        for sel in selections:
-            for mut in mutations:
+        for sel_idx, sel in enumerate(selections):
+            for mut_idx, mut in enumerate(mutations):
+
                 # Create config for this combination
                 cfg = GAConfig(
                     DIMENSION=base_cfg.DIMENSION,
@@ -306,20 +302,27 @@ def full_ga_study(
                     OBJECTIVE_NAME=obj_name
                 )
 
+                # Calculate evaluations for this combo
+                evaluations_per_run = cfg.POP_SIZE * cfg.GENERATIONS
+                combo_evaluations = evaluations_per_run * runs
+                total_evaluations += combo_evaluations
+
+                print(f"  Combo {sel_idx * len(mutations) + mut_idx + 1}/{len(selections) * len(mutations)}: "
+                      f"{sel:<10} mut={mut:<5} ", end="")
+
                 finals = []
 
                 for r in range(runs):
                     random.seed(r)
                     np.random.seed(r)
 
-                    best_fit, _, _, _ = run_ga(cfg)
+                    best_fit, _, _, _ = run_ga(cfg, verbose=False)
                     finals.append(best_fit[-1])
 
                 mean_final = np.mean(finals)
 
-                print(
-                    f"{sel:<10} mut={mut:<5} → {mean_final:.5f}"
-                )
+                print(f"→ {mean_final:.5f} "
+                      f"({combo_evaluations:,} evals)")
 
                 if mean_final > best_score:
                     best_score = mean_final
@@ -327,11 +330,26 @@ def full_ga_study(
 
         summary.append((obj_name, *best_combo, best_score))
 
+    # Calculate total time
+    end_time = time.time()
+    total_time = end_time - start_time
+
     # ----- print summary -----
-    print("\n====== BEST COMBINATIONS ======")
+    print("\n" + "=" * 50)
+    print("====== BEST COMBINATIONS ======")
     print(f"{'Objective':<12} {'Selection':<12} {'Mutation':<10} {'Score'}")
 
     for row in summary:
         print(f"{row[0]:<12} {row[1]:<12} {row[2]:<10} {row[3]:.5f}")
+
+    # ----- statistics -----
+    print("\n" + "=" * 50)
+    print("====== STUDY STATISTICS ======")
+    print(f"Total combinations tested: {len(objectives) * len(selections) * len(mutations)}")
+    print(f"Total GA runs: {len(objectives) * len(selections) * len(mutations) * runs}")
+    print(f"Total objective evaluations: {total_evaluations:,}")
+    print(f"Total time: {total_time:.2f} seconds")
+    print(f"Time per GA run: {total_time / (len(objectives) * len(selections) * len(mutations) * runs):.3f} seconds")
+    print(f"Evaluations per second: {total_evaluations / total_time:,.0f}")
 
     return summary

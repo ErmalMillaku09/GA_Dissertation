@@ -4,6 +4,8 @@ from config import GAConfig
 from benchmarks import get_objective, fitness_from_objective
 from operators import select, arithmetic_crossover, mutate
 
+cfg = GAConfig()
+
 # =========================================================
 # ---------------- POPULATION SETUP -----------------------
 # =========================================================

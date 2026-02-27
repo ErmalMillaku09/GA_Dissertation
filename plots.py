@@ -63,7 +63,7 @@ def plot_statistics(all_runs, mean, std, cfg):
     plt.show()
 
 
-def plot_history(best_history, avg_history):
+def plot_history(best_history, avg_history, cfg):
     plt.figure(figsize=(8, 5))
 
     plt.plot(best_history, linewidth=2.8, label="Best", color="C0")
@@ -109,7 +109,7 @@ def plot_fitness_comparison(ga_runs, rand_runs, cfg):
 
 
 
-def plot_objective_history(best_obj, avg_obj):
+def plot_objective_history(best_obj, avg_obj, cfg):
     plt.figure(figsize=(8, 5))
 
     plt.plot(best_obj, linewidth=2.8, label="Best", color="C0")
