@@ -5,14 +5,17 @@ from plots import *
 cfg = GAConfig()
 
 if __name__ == "__main__":
-    #run_experiment(cfg, 50)
-    full_ga_study(
-        objectives=["sphere", "rastrigin", "ackley", "rosenbrock"],
-        selections=["roulette", "tournament", "ranking"],
-        mutations=[0.05, 0.1, 0.15, 0.2],
-        runs=25
-    )
 
+    gd_single_run(cfg)
+
+    gd_statistics(cfg)
+
+    alpha_results = gd_alpha_sweep(cfg)
+    plot_alpha_sweep(alpha_results)
+
+    ga_vs_gd_comparison(cfg)
+
+    ga_vs_gd_statistics(cfg)
     #### 2
 
     # cfg = GAConfig(OBJECTIVE_NAME="rastrigin", GENERATIONS=100)

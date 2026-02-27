@@ -6,6 +6,7 @@ from core import run_ga, run_random_search
 from plots import plot_statistics, plot_objective_statistics, plot_fitness_comparison
 from benchmarks import get_objective
 import time
+from gradient_descent import gradient_descent
 
 def run_experiment(cfg=None, runs=50):
     """
@@ -353,3 +354,108 @@ def full_ga_study(
     print(f"Evaluations per second: {total_evaluations / total_time:,.0f}")
 
     return summary
+
+
+#==================== Gradient Descent Section ===========
+def gd_single_run(cfg):
+    x, fval, history, nfe = gradient_descent(
+        cfg,
+        alpha=cfg.GD_ALPHA,
+        max_nfe=cfg.NFE
+    )
+
+    plt.figure()
+    plt.plot(history)
+    plt.title("Gradient Descent - Single Run Convergence")
+    plt.xlabel("Function Evaluations")
+    plt.ylabel("Best Objective Value")
+    plt.grid(True)
+    plt.show()
+
+    print("GD final value:", fval)
+    print("GD evaluations:", nfe)
+
+
+def gd_statistics(cfg):
+    results = [
+        gradient_descent(cfg, alpha=cfg.GD_ALPHA, max_nfe=cfg.NFE)[1]
+        for _ in range(cfg.RUNS)
+    ]
+
+    mean = np.mean(results)
+    std = np.std(results)
+
+    print("\n====== GD 50-Run Statistics ======")
+    print("Mean:", mean)
+    print("Std:", std)
+
+    return mean, std
+
+def gd_alpha_sweep(cfg):
+
+    alphas = [1e-4, 1e-3, 1e-2, 1e-1]
+    results = []
+
+    print("Alpha Sensitivity Study")
+
+    for a in alphas:
+        _, val, _, _ = gradient_descent(
+            cfg,
+            alpha=a,
+            max_nfe=cfg.NFE
+        )
+        results.append((a, val))
+        print("alpha =", a, "final =", val)
+
+    return results
+
+def plot_alpha_sweep(results):
+    alphas = [r[0] for r in results]
+    values = [r[1] for r in results]
+
+    plt.figure()
+    plt.plot(alphas, values, marker='o')
+    plt.xscale("log")
+    plt.title("GD Step Size Sensitivity")
+    plt.xlabel("Alpha")
+    plt.ylabel("Final Objective Value")
+    plt.grid(True)
+    plt.show()
+
+
+def ga_vs_gd_comparison(cfg):
+    print("\n====== GA vs GD COMPARISON ======")
+    # --- GA ---
+    _, _,best_obj_hist, _ = run_ga(cfg)
+    ga_best = best_obj_hist[-1]
+    # --- GD ---
+    _, gd_best, _, _ = gradient_descent( cfg, alpha=cfg.GD_ALPHA, max_nfe=cfg.NFE )
+    print(f"Objective: {cfg.OBJECTIVE_NAME}")
+    print(f"GA Final Best: {ga_best:.6f}")
+    print(f"GD Final Best: {gd_best:.6f}")
+
+
+
+def ga_vs_gd_statistics(cfg):
+
+    ga_results = []
+    gd_results = []
+
+    for _ in range(cfg.RUNS):
+        _, ga_val, _, _ = run_ga(cfg)
+        _, gd_val, _, _ = gradient_descent(
+            cfg,
+            alpha=cfg.GD_ALPHA,
+            max_nfe=cfg.NFE
+        )
+        ga_results.append(ga_val)
+        gd_results.append(gd_val)
+
+    print(f"HERE {gd_results}")
+    print("\n===== GA vs GD (50-run stats) =====")
+    print("Algorithm   Mean        Std")
+    print("--------------------------------")
+    print(f"GA          {np.mean(ga_results):.6f}   {np.std(ga_results):.6f}")
+    print(f"GD          {np.mean(gd_results):.6f}   {np.std(gd_results):.6f}")
+
+

@@ -166,3 +166,12 @@ def plot_objective_statistics(all_runs, cfg):
     )
     plt.tight_layout(rect=(0, 0, 1, 0.95))
     plt.show()
+
+
+def plot_convergence(history, label=""):
+    plt.plot(history, label=label)
+    plt.xlabel("NFE")
+    plt.ylabel("Objective")
+    plt.yscale("log")
+    plt.legend()
+    plt.show()

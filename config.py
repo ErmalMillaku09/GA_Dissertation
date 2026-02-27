@@ -7,7 +7,7 @@ from dataclasses import dataclass
 @dataclass
 class GAConfig:
     DIMENSION: int = 5
-    BOUNDS: tuple = (-5.0, 5.0)
+    BOUNDS: tuple = (-5.0, 5)
 
     POP_SIZE: int = 50
     GENERATIONS: int = 250
@@ -23,7 +23,11 @@ class GAConfig:
     TOURNAMENT_K: int = 3
 
     OBJECTIVE_NAME: str = "ackley"  # "sphere" "rastrigin" "ackley" "rosenbrock"
+    GD_ALPHA = 0.001
+    RUNS = 50
+    NFE = 10000
 
-
+    ALGORITHM = "GD" # "COMPARE" "GD"
 cfg = GAConfig()
+
 
