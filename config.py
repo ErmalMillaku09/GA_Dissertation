@@ -1,4 +1,6 @@
+# config.py
 from dataclasses import dataclass
+
 
 # =========================================================
 # -------------------- PARAMETERS -------------------------
@@ -6,6 +8,7 @@ from dataclasses import dataclass
 
 @dataclass
 class GAConfig:
+    # GA parameters
     DIMENSION: int = 5
     BOUNDS: tuple = (-5.0, 5.0)
 
@@ -18,12 +21,21 @@ class GAConfig:
 
     USE_ELITISM: bool = True
 
-    # new
+    # Selection parameters
     SELECTION_METHOD: str = "ranking"  # roulette | tournament | ranking
     TOURNAMENT_K: int = 3
 
-    OBJECTIVE_NAME: str = "ackley"  # "sphere" "rastrigin" "ackley" "rosenbrock"
+    # Objective
+    OBJECTIVE_NAME: str = "sphere"  # "sphere" "rastrigin" "ackley" "rosenbrock"
+
+    # GD parameters (add these with proper defaults)
+    GD_ALPHA: float = 0.001
+    RUNS: int = 50
+    NFE: int = 10000
+
+    # Algorithm choice
+    ALGORITHM: str = "GD"  # "COMPARE" "GD"
 
 
+# Create a default instance
 cfg = GAConfig()
-
