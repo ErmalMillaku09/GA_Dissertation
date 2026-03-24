@@ -26,7 +26,7 @@ class GAConfig:
     TOURNAMENT_K: int = 3
 
     # Objective
-    OBJECTIVE_NAME: str = "ackley"  # "sphere" "rastrigin" "ackley" "rosenbrock"
+    OBJECTIVE_NAME: str = "sphere"  # "sphere" "rastrigin" "ackley" "rosenbrock"
 
     # GD parameters (add these with proper defaults)
     GD_ALPHA: float = 0.001

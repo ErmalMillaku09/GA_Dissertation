@@ -90,6 +90,22 @@ def plot_fitness_comparison(ga_runs, rand_runs, cfg):
     plt.show()
 
 
+def plot_objective_comparison(results, cfg):
+    """Plot mean convergence curves for multiple objectives."""
+    plt.figure(figsize=(10, 6))
+    for name, curve in results.items():
+        plt.plot(curve, linewidth=2, label=name)
+
+    plt.xlabel("Generation")
+    plt.ylabel("Fitness")
+    plt.yscale("log")
+    plt.title(f"GA Performance Across Benchmark Functions | {cfg.OBJECTIVE_NAME}")
+    plt.legend(title="Objective")
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+
 def plot_objective_history(best_obj, avg_obj, cfg):
     plt.figure(figsize=(8, 5))
     plt.plot(best_obj, linewidth=2.8, label="Best", color="C0")

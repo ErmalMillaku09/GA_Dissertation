@@ -5,7 +5,7 @@ from config import GAConfig
 from core import run_ga, run_random_search
 from benchmarks import get_objective
 import time
-from gradient_descent import gradient_descent
+from gradient_descent import gradient_descent, multi_start_gradient_descent
 
 def run_experiment(cfg=None, runs=50):
     """
@@ -56,12 +56,34 @@ def compare_ga_vs_random(cfg=None, runs=50):
 
 def run_parameter_sweep(param_name, values, base_cfg=None, runs=20):
     """
-    Sweep a parameter and return results dict {value: mean_curve}.
+    Generic experiment runner.
+
+    Example:
+        run_parameter_sweep("SELECTION_METHOD", ["roulette","tournament","ranking"])
+        run_parameter_sweep("MUTATION_RATE", [0.05, 0.1, 0.2])
+        run_parameter_sweep("POP_SIZE", [30, 50, 100])
     """
     if base_cfg is None:
         base_cfg = GAConfig()
 
+    cfg = GAConfig(
+        DIMENSION=base_cfg.DIMENSION,
+        BOUNDS=base_cfg.BOUNDS,
+        POP_SIZE=base_cfg.POP_SIZE,
+        GENERATIONS=base_cfg.GENERATIONS,
+        CROSSOVER_RATE=base_cfg.CROSSOVER_RATE,
+        MUTATION_RATE=base_cfg.MUTATION_RATE,
+        MUTATION_STD=base_cfg.MUTATION_STD,
+        USE_ELITISM=base_cfg.USE_ELITISM,
+        SELECTION_METHOD=base_cfg.SELECTION_METHOD,
+        TOURNAMENT_K=base_cfg.TOURNAMENT_K,
+        OBJECTIVE_NAME=base_cfg.OBJECTIVE_NAME
+    )
+
     results = {}
+    gens = np.arange(cfg.GENERATIONS)
+
+    plt.figure(figsize=(9, 6))
 
     print("\n=== PARAMETER SWEEP RESULTS ===")
     print(f"Parameter: {param_name}")
@@ -69,29 +91,19 @@ def run_parameter_sweep(param_name, values, base_cfg=None, runs=20):
     print(f"{'Value':<15} {'Mean final':<15} {'Std':<15}")
 
     for val in values:
-        cfg = GAConfig(
-            DIMENSION=base_cfg.DIMENSION,
-            BOUNDS=base_cfg.BOUNDS,
-            POP_SIZE=base_cfg.POP_SIZE,
-            GENERATIONS=base_cfg.GENERATIONS,
-            CROSSOVER_RATE=base_cfg.CROSSOVER_RATE,
-            MUTATION_RATE=base_cfg.MUTATION_RATE,
-            MUTATION_STD=base_cfg.MUTATION_STD,
-            USE_ELITISM=base_cfg.USE_ELITISM,
-            SELECTION_METHOD=base_cfg.SELECTION_METHOD,
-            TOURNAMENT_K=base_cfg.TOURNAMENT_K,
-            OBJECTIVE_NAME=base_cfg.OBJECTIVE_NAME
-        )
         setattr(cfg, param_name, val)
 
         runs_data = []
+
         for r in range(runs):
             random.seed(r)
             np.random.seed(r)
+
             best_fit, _, _, _ = run_ga(cfg)
             runs_data.append(best_fit)
 
         runs_data = np.array(runs_data)
+
         mean_curve = runs_data.mean(axis=0)
         final_vals = runs_data[:, -1]
 
@@ -100,7 +112,25 @@ def run_parameter_sweep(param_name, values, base_cfg=None, runs=20):
 
         results[val] = mean_curve
 
+        # print table row
         print(f"{str(val):<15} {mean_final:<15.6f} {std_final:<15.6f}")
+
+        # plot curve
+        plt.plot(mean_curve, linewidth=2, label=str(val))
+
+    # ----- plot formatting -----
+    plt.xlabel("Generation")
+    plt.ylabel("Fitness")
+    plt.yscale("log")
+
+    plt.title(
+        f"Parameter Sweep: {param_name}\n"
+        f"Objective: {cfg.OBJECTIVE_NAME}"
+    )
+
+    plt.legend(title=param_name)
+    plt.tight_layout()
+    plt.show()
 
     return results
 
@@ -299,3 +329,45 @@ def run_ga_vs_gd_statistics(cfg):
     print(f"GA          {np.mean(ga_results):.6f}   {np.std(ga_results):.6f}")
     print(f"GD          {np.mean(gd_results):.6f}   {np.std(gd_results):.6f}")
     return np.array(ga_results), np.array(gd_results)
+
+
+# ==================== Tuned Gradient Descent Section ===========
+
+def run_tuned_gd_single(cfg, n_starts=10):
+    """Run tuned GD once and return x, fval, nfe."""
+    x, fval, nfe = multi_start_gradient_descent(cfg, n_starts=n_starts, 
+                                               alpha_init=0.01, max_nfe=cfg.NFE)
+    return x, fval, nfe
+
+
+def run_tuned_gd_statistics(cfg, n_starts=10):
+    """Run tuned GD multiple times and return list of final values."""
+    results = []
+    for _ in range(cfg.RUNS):
+        _, fval, _ = multi_start_gradient_descent(cfg, n_starts=n_starts, 
+                                                alpha_init=0.01, max_nfe=cfg.NFE)
+        results.append(fval)
+    return np.array(results)
+
+
+def run_ga_vs_tuned_gd_statistics(cfg, n_starts=10):
+    """Compare GA vs tuned GD over multiple runs."""
+    ga_results = []
+    gd_tuned_results = []
+    
+    for _ in range(cfg.RUNS):
+        _, ga_val, _, _ = run_ga(cfg)
+        _, gd_val, _ = multi_start_gradient_descent(cfg, n_starts=n_starts, 
+                                                  alpha_init=0.01, max_nfe=cfg.NFE)
+        ga_results.append(ga_val)
+        gd_tuned_results.append(gd_val)
+
+    print("\n===== GA vs Tuned GD (multi-start + adaptive) =====")
+    print("Algorithm      Mean        Std")
+    print("-----------------------------------")
+    print(f"GA             {np.mean(ga_results):.6f}   {np.std(ga_results):.6f}")
+    print(f"Tuned GD       {np.mean(gd_tuned_results):.6f}   {np.std(gd_tuned_results):.6f}")
+    print(f"Improvement:   {((np.mean(ga_results) - np.mean(gd_tuned_results)) / np.mean(ga_results) * 100):.1f}%")
+    
+    return np.array(ga_results), np.array(gd_tuned_results)
+

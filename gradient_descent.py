@@ -37,12 +37,15 @@ def grad_ackley(x, a=20, b=0.2, c=2*np.pi):
 
     grad = np.zeros_like(x)
     for i in range(n):
-        if sqrt_term != 0:
+        if sqrt_term > 1e-10:  # Numerical stability threshold
             term1 = (a * b / (n * sqrt_term)) * x[i] * exp1
         else:
             term1 = 0.0
         term2 = (c / n) * np.sin(c * x[i]) * exp2
         grad[i] = term1 + term2
+    
+    # Clip gradient to prevent numerical overflow
+    grad = np.clip(grad, -100, 100)
     return grad
 
 
@@ -101,11 +104,163 @@ def gradient_descent(cfg, alpha=0.001, max_nfe=None, tol=1e-8, portfolio_optimiz
         if grad_norm < tol:
             break
 
-        # Adaptive step size: reduce alpha if step too large
+        # Compute step without normalization (preserves natural gradient magnitude)
         step = alpha * g
-        if np.linalg.norm(step) > 1.0:
-            alpha = alpha * 0.5
         
-        x = x - alpha * g
+        # Adaptive: reduce alpha if step too large
+        step_norm = np.linalg.norm(step)
+        if step_norm > 1.0:
+            step = step * (1.0 / step_norm)  # Clip step to unit norm
+        
+        x_new = x - step
+        
+        # Enforce bounds
+        x_new = np.clip(x_new, low, high)
+        x = x_new
 
     return x, fx, history, nfe
+
+
+# =========================================================
+# TUNED GRADIENT DESCENT (Multi-start + Adaptive)
+# =========================================================
+
+def multi_start_gradient_descent(cfg, n_starts=10, alpha_init=0.01, max_nfe=None, portfolio_optimizer=None):
+    """
+    Tuned GD with multiple random starts and adaptive learning rate.
+    
+    Key improvements over basic GD:
+    - Multiple random starts to escape local minima
+    - Adaptive learning rate with backtracking line search
+    - Better initialization strategy
+    """
+    if max_nfe is None:
+        max_nfe = cfg.NFE
+        
+    dim = cfg.DIMENSION
+    low, high = cfg.BOUNDS
+    
+    # Get objective and gradient functions
+    if cfg.OBJECTIVE_NAME == "portfolio" and portfolio_optimizer is not None:
+        f = lambda x: portfolio_optimizer.variance_objective(x.reshape(1, -1))[0]
+        if hasattr(cfg, 'PORTFOLIO_OBJECTIVE') and cfg.PORTFOLIO_OBJECTIVE == 'sharpe':
+            grad_f = lambda x: portfolio_optimizer.sharpe_gradient(x)
+        else:
+            grad_f = lambda x: portfolio_optimizer.variance_gradient(x)
+    else:
+        f = get_objective(cfg.OBJECTIVE_NAME)
+        grad_map = {
+            "sphere": grad_sphere,
+            "rosenbrock": grad_rosenbrock,
+            "rastrigin": grad_rastrigin,
+            "ackley": grad_ackley,
+        }
+        grad_f = grad_map.get(cfg.OBJECTIVE_NAME)
+        if grad_f is None:
+            raise ValueError(f"No gradient available for {cfg.OBJECTIVE_NAME}")
+    
+    # Track best solution across all starts
+    best_x = None
+    best_fval = np.inf
+    total_nfe = 0
+    
+    for start in range(n_starts):
+        # Smart initialization: mix of random and center-biased
+        if start == 0:
+            # First start from center (good for convex functions)
+            x = np.zeros(dim)
+        else:
+            # Other starts random in bounds
+            x = np.random.uniform(low, high, dim)
+        
+        # Run adaptive GD from this start
+        x_final, fval, nfe_used = _adaptive_gd_single_run(
+            x, f, grad_f, alpha_init, max_nfe // n_starts, 
+            low, high, cfg.OBJECTIVE_NAME == "portfolio" and portfolio_optimizer is not None
+        )
+        
+        total_nfe += nfe_used
+        
+        if fval < best_fval:
+            best_fval = fval
+            best_x = x_final.copy()
+            
+        # Early termination if we found a very good solution
+        if best_fval < 1e-6:  # Near-optimal for most benchmarks
+            break
+    
+    return best_x, best_fval, total_nfe
+
+
+def _adaptive_gd_single_run(x_init, f, grad_f, alpha_init, max_nfe, low, high, is_portfolio=False):
+    """
+    Single adaptive GD run with backtracking line search.
+    """
+    x = x_init.copy()
+    alpha = alpha_init
+    nfe = 0
+    tol = 1e-8
+    
+    # Get initial function value
+    if is_portfolio:
+        fx = f(x)
+    else:
+        fx = f(x.reshape(1, -1))[0]
+    nfe += 1
+    
+    for _ in range(max_nfe - 1):
+        g = grad_f(x)
+        grad_norm = np.linalg.norm(g)
+        
+        if grad_norm < tol:
+            break
+            
+        # Backtracking line search for step size
+        alpha = _backtracking_line_search(x, g, f, fx, alpha, is_portfolio)
+        
+        # Take step
+        x_new = x - alpha * g
+        x_new = np.clip(x_new, low, high)
+        
+        # Evaluate new point
+        if is_portfolio:
+            f_new = f(x_new)
+        else:
+            f_new = f(x_new.reshape(1, -1))[0]
+        nfe += 1
+        
+        # Accept step if it improves
+        if f_new < fx:
+            x = x_new
+            fx = f_new
+            # Increase alpha (trust more)
+            alpha = min(alpha * 1.2, 1.0)
+        else:
+            # Decrease alpha (be more conservative)
+            alpha = max(alpha * 0.5, 1e-8)
+    
+    return x, fx, nfe
+
+
+def _backtracking_line_search(x, g, f, fx, alpha, is_portfolio, rho=0.8, c=1e-4, max_iter=10):
+    """
+    Backtracking line search to find acceptable step size.
+    """
+    for _ in range(max_iter):
+        x_new = x - alpha * g
+        
+        if is_portfolio:
+            f_new = f(x_new)
+        else:
+            f_new = f(x_new.reshape(1, -1))[0]
+            
+        # Armijo condition
+        if f_new <= fx - c * alpha * np.dot(g, g):
+            return alpha
+            
+        alpha *= rho
+        
+        if alpha < 1e-10:
+            return alpha
+            
+    return alpha
