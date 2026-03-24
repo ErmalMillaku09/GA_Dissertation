@@ -28,18 +28,39 @@ if __name__ == "__main__":
     # ----- GA vs GD statistics (50 runs) -----
     ga_finals, gd_finals = run_ga_vs_gd_statistics(cfg)
 
-    # FIX: Extract the final values from GA runs (they're convergence histories)
-    # ga_finals is shape (runs, generations) - we want the last value of each run
-    ga_final_values = ga_finals[:, -1]  # Take last generation value from each run
-    # gd_finals is already 1D (list of final values)
+    # Extract final values from GA runs
+    ga_final_values = ga_finals[:, -1]  # last generation value
 
     plot_gd_vs_ga_comparison(ga_final_values, gd_finals, cfg)
 
-   # The following examples are kept as comments:
-    cfg = GAConfig(OBJECTIVE_NAME="rastrigin", GENERATIONS=100)
-    print(cfg)
-    best_fit, avg_fit, best_obj, avg_obj = run_ga(cfg, verbose=True)
-    plot_history(best_fit, avg_fit, cfg)
-    plot_objective_history(best_obj, avg_obj, cfg)
+    # Example: run GA on rastrigin (commented)
+    # cfg = GAConfig(OBJECTIVE_NAME="rastrigin", GENERATIONS=100)
+    # print(cfg)
+    # best_fit, avg_fit, best_obj, avg_obj = run_ga(cfg, verbose=True)
+    # plot_history(best_fit, avg_fit, cfg)
+    # plot_objective_history(best_obj, avg_obj, cfg)
 
-    # run_experiment(cfg, runs=30)
+    # ===== REAL PORTFOLIO OPTIMIZATION =====
+    print("\n" + "=" * 70)
+    print("PORTFOLIO OPTIMIZATION WITH REAL DATA")
+    print("=" * 70)
+    print("This will download data from Yahoo Finance.")
+    print("Make sure you have yfinance installed: pip install yfinance")
+
+    try:
+        import yfinance
+
+        print("✓ yfinance is installed")
+
+        # Run portfolio optimization
+        from portfolio_main import run_portfolio_comparison, plot_portfolio_results
+
+        results, portfolio = run_portfolio_comparison()
+        plot_portfolio_results(results, portfolio)
+
+    except ImportError:
+        print("\n yfinance not installed. Run: pip install yfinance")
+    except Exception as e:
+        print(f"\n Error in portfolio optimization: {e}")
+        import traceback
+        traceback.print_exc()

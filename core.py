@@ -15,9 +15,12 @@ def initialize_population(cfg):
     return np.random.uniform(low, high, (cfg.POP_SIZE, cfg.DIMENSION))
 
 
-def evaluate_population(pop, cfg):
-    # Get objective function dynamically based on current config
-    objective_func = get_objective(cfg.OBJECTIVE_NAME)
+def evaluate_population(pop, cfg, custom_objective=None):
+    # Get objective function: use custom if provided, otherwise lookup by name
+    if custom_objective is not None:
+        objective_func = custom_objective
+    else:
+        objective_func = get_objective(cfg.OBJECTIVE_NAME)
     obj = objective_func(pop)
     fit = fitness_from_objective(obj)
     return obj, fit
@@ -27,8 +30,8 @@ def evaluate_population(pop, cfg):
 # ---------------- EVOLUTION STEP -------------------------
 # =========================================================
 
-def evolve_one_generation(pop, cfg):
-    obj, fitness = evaluate_population(pop, cfg)
+def evolve_one_generation(pop, cfg, custom_objective=None):
+    obj, fitness = evaluate_population(pop, cfg, custom_objective=custom_objective)
     new_pop = []
 
     # ----- ELITISM -----
@@ -55,7 +58,7 @@ def evolve_one_generation(pop, cfg):
 # ---------------- RUN ONE GA -----------------------------
 # =========================================================
 
-def run_ga(cfg, verbose=False):
+def run_ga(cfg, verbose=False, custom_objective=None):
     pop = initialize_population(cfg)
 
     best_fit_hist = []
@@ -66,9 +69,9 @@ def run_ga(cfg, verbose=False):
 
     for gen in range(cfg.GENERATIONS):
 
-        pop = evolve_one_generation(pop, cfg)
+        pop = evolve_one_generation(pop, cfg, custom_objective=custom_objective)
 
-        obj, fit = evaluate_population(pop, cfg)
+        obj, fit = evaluate_population(pop, cfg, custom_objective=custom_objective)
 
         # ----- fitness -----
         best_fit_hist.append(np.max(fit))

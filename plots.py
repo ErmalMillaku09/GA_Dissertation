@@ -190,3 +190,19 @@ def plot_gd_vs_ga_comparison(ga_finals, gd_finals, cfg):
     plt.title(f"GA vs GD | {cfg.OBJECTIVE_NAME}")
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.show()
+
+
+def plot_portfolio_weights(weights, title="Portfolio Weights"):
+    """
+    weights: 2D array (n_runs, n_assets) or a single weight vector.
+    """
+    plt.figure(figsize=(8,5))
+    if weights.ndim == 1:
+        plt.bar(range(len(weights)), weights)
+        plt.title(title)
+    else:
+        plt.boxplot(weights, labels=[f"Asset {i+1}" for i in range(weights.shape[1])])
+        plt.title(title)
+    plt.ylabel("Weight")
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.show()
