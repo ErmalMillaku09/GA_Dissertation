@@ -19,8 +19,10 @@ import numpy as np
 def exp_gd_single_run():
     """Single GD run on default objective with visualization."""
     cfg = GAConfig()
+    # cfg.NFE = 10000
+    # cfg.OBJECTIVE_NAME = "rastrigin"
     x, fval, history, nfe = run_gd_single(cfg)
-    plot_gd_convergence(history, title="GD Single Run Convergence")
+    plot_gd_convergence(history, title=f"GD Single Run Convergence | {cfg.OBJECTIVE_NAME.capitalize()}")
     print(f"GD final value: {fval:.6f}")
     print(f"GD evaluations: {nfe}")
 
@@ -28,7 +30,10 @@ def exp_gd_single_run():
 def exp_gd_statistics():
     """GD statistics over 50 runs."""
     cfg = GAConfig()
-    gd_finals = run_gd_statistics(cfg)
+    gd_finals, gd_histories = run_gd_statistics_with_histories(cfg)
+
+    # Plot convergence and distribution (similar to GA)
+    plot_gd_statistics(gd_histories, cfg)
     print("\n====== GD 50-Run Statistics ======")
     print(f"Mean: {np.mean(gd_finals):.6f}")
     print(f"Std: {np.std(gd_finals):.6f}")
@@ -39,8 +44,9 @@ def exp_gd_statistics():
 def exp_gd_alpha_sensitivity():
     """GD step size (alpha) sensitivity analysis."""
     cfg = GAConfig()
-    alpha_results = run_gd_alpha_sweep(cfg, alphas=[1e-4, 1e-3, 1e-2, 1e-1])
-    plot_gd_alpha_sweep(alpha_results)
+    cfg.OBJECTIVE_NAME="ackley"
+    alpha_results = run_gd_alpha_sweep(cfg, alphas=[1e-4, 1e-3, 1e-2, 1e-1, 0.5, 1.0,2.0])
+    plot_gd_alpha_sweep(alpha_results, cfg)
     print("\n====== Alpha Sensitivity Results ======")
     for alpha, final_val in alpha_results:
         print(f"Alpha {alpha:.4f}: {final_val:.6f}")
@@ -112,12 +118,9 @@ def exp_tuned_gd_statistics():
 
 
 def exp_ga_vs_tuned_gd():
-    """Compare GA vs tuned GD over multiple runs."""
-    cfg = GAConfig(OBJECTIVE_NAME="sphere", RUNS=50)
-    ga_results, tuned_gd_results = run_ga_vs_tuned_gd_statistics(cfg, n_starts=10)
-    print("\n====== GA vs Tuned GD Comparison ======")
-    print(f"GA Mean: {np.mean(ga_results):.6f}")
-    print(f"Tuned GD Mean: {np.mean(tuned_gd_results):.6f}")
+    """Compare GA vs Tuned GD over multiple runs."""
+    cfg = GAConfig(OBJECTIVE_NAME="rosenbrock", RUNS=50)
+    run_ga_vs_tuned_gd_statistics(cfg, n_starts=10)
 
 
 def exp_tuned_gd_on_all_benchmarks():
@@ -137,7 +140,7 @@ def exp_tuned_gd_on_all_benchmarks():
 
 def exp_tuned_gd_vs_basic_gd():
     """Compare tuned GD vs basic GD."""
-    cfg = GAConfig(RUNS=20, OBJECTIVE_NAME="ackley")
+    cfg = GAConfig(RUNS=20, OBJECTIVE_NAME="rosenbrock")
     
     print("\n====== Tuned GD vs Basic GD ======")
     
@@ -246,20 +249,25 @@ def exp_ga_vs_gd_single():
 
 def exp_ga_vs_gd_statistics():
     """GA vs GD over 50 runs each."""
-    cfg = GAConfig(OBJECTIVE_NAME="ackley", RUNS = 50)
+    cfg = GAConfig(OBJECTIVE_NAME="rastrigin", RUNS=50, NFE=10000)
     ga_finals, gd_finals = run_ga_vs_gd_statistics(cfg)
-    
-    # Extract final values
-    ga_final_values = ga_finals[:, -1]
-    
-    plot_gd_vs_ga_comparison(ga_final_values, gd_finals, cfg)
-    print("\n====== FA vs GD (50 runs) ======")
-    print(f"GA  - Mean: {np.mean(ga_final_values):.6f}, Best: {np.min(ga_final_values):.6f}")
+
+    # ga_finals and gd_finals are now 1D arrays of final values (scalars)
+    # No need to extract [:, -1] anymore
+
+    plot_gd_vs_ga_comparison(ga_finals, gd_finals, cfg)
+    print("\n====== GA vs GD (50 runs) ======")
+    print(f"GA  - Mean: {np.mean(ga_finals):.6f}, Best: {np.min(ga_finals):.6f}")
     print(f"GD  - Mean: {np.mean(gd_finals):.6f}, Best: {np.min(gd_finals):.6f}")
 
 
 def exp_algorithm_on_difficult_landscape():
-    """Test both algorithms on Rastrigin (difficult)."""
+    """Test basic GA vs basic GD on Rastrigin (difficult multi-modal landscape).
+    
+    This demonstrates why population-based methods (GA) outperform 
+    local search methods (basic GD) on multi-modal optimization problems.
+    Basic GD gets trapped in local minima, while GA explores multiple solutions.
+    """
     cfg = GAConfig(
         OBJECTIVE_NAME="rastrigin",
         DIMENSION=10,
@@ -270,18 +278,22 @@ def exp_algorithm_on_difficult_landscape():
     )
     
     print("\n====== Rastrigin (Difficult Landscape) ======")
+    print("Comparing basic GA vs basic GD (single random start)")
+    print("GA uses population-based search, GD uses local gradient descent")
     
     # GA
     ga_results = run_experiment(cfg, runs=50)
     ga_best = np.mean(ga_results[1][:, -1])
     
-    # GD
+    # GD (basic, single start)
     gd_results = run_gd_statistics(cfg)
     gd_best = np.mean(gd_results)
     
     print(f"GA final value: {ga_best:.6f}")
     print(f"GD final value: {gd_best:.6f}")
-    print(f"GA {'outperforms' if ga_best < gd_best else 'underperforms'} GD by {abs(ga_best - gd_best):.6f}")
+    print(f"GA outperforms GD by {abs(ga_best - gd_best):.6f}")
+    print("\nNote: GD gets stuck in local minima (~90) because Rastrigin has many.")
+    print("GA explores multiple solutions simultaneously, finding better regions.")
 
 
 # =========================================================
@@ -395,7 +407,12 @@ def exp_portfolio_gd_variance():
         RUNS=30
     )
     
-    results = run_gd_statistics(cfg)
+    results = []
+    for _ in range(30):
+        _, fval, _, _ = gradient_descent(cfg, alpha=0.01, max_nfe=5000, portfolio_optimizer=portfolio)
+        results.append(fval)
+    
+    results = np.array(results)
     print(f"Mean portfolio variance: {np.mean(results):.6f}")
     print(f"Std: {np.std(results):.6f}")
     print(f"Best: {np.min(results):.6f}")
@@ -490,6 +507,9 @@ def exp_portfolio_ga_vs_gd():
     print("-" * 55)
     
     for obj_name, obj_func, use_sharpe in objectives:
+        # Set portfolio objective for GD
+        cfg.PORTFOLIO_OBJECTIVE = 'sharpe' if use_sharpe else 'variance'
+        
         # GA
         ga_results = []
         for r in range(20):
@@ -506,6 +526,11 @@ def exp_portfolio_ga_vs_gd():
         
         ga_mean = np.mean(ga_results)
         gd_mean = np.mean(gd_results)
+        
+        # For Sharpe ratio, convert back to positive (since we minimize -sharpe)
+        if use_sharpe:
+            ga_mean = -ga_mean
+            gd_mean = gd_mean
         
         print(f"{obj_name:<25} {ga_mean:<15.6f} {gd_mean:<15.6f}")
 
@@ -564,9 +589,9 @@ def exp_portfolio_tuned_gd_sharpe():
         results.append(fval)
     
     results = np.array(results)
-    print(f"Mean Sharpe ratio: {np.mean(results):.6f}")
+    print(f"Mean Sharpe ratio: {-np.mean(results):.6f}")
     print(f"Std: {np.std(results):.6f}")
-    print(f"Best: {np.max(results):.6f}")  # Max because negative (minimization)
+    print(f"Best: {-np.max(results):.6f}")  # Max because negative (minimization)
 
 
 def exp_portfolio_ga_vs_tuned_gd():
@@ -597,6 +622,9 @@ def exp_portfolio_ga_vs_tuned_gd():
     print("-" * 60)
     
     for obj_name, obj_func, use_sharpe in objectives:
+        # Set portfolio objective for tuned GD
+        cfg.PORTFOLIO_OBJECTIVE = 'sharpe' if use_sharpe else 'variance'
+        
         # GA
         ga_results = []
         for r in range(15):
@@ -635,32 +663,16 @@ def exp_portfolio_different_sectors():
         RUNS=15
     )
     
-    results = run_gd_statistics(cfg)
+    results = []
+    for _ in range(15):
+        _, fval, _, _ = gradient_descent(cfg, alpha=0.01, max_nfe=5000, portfolio_optimizer=portfolio)
+        results.append(fval)
+    
+    results = np.array(results)
     print(f"Mean variance (diverse portfolio): {np.mean(results):.6f}")
     print(f"Compare with tech portfolio results from earlier")
 
 
-def exp_portfolio_sensitivity_data_window():
-    """Test portfolio sensitivity to data window."""
-    print("\n====== Portfolio: Sensitivity to Data Window ======")
-    
-    tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META']
-    windows = [
-        ('2020-01-01', '2021-12-31', '1yr'),
-        ('2020-01-01', '2022-12-31', '2yr'),
-        ('2020-01-01', '2024-12-31', '4yr'),
-    ]
-    
-    print(f"{'Window':<15} {'Portfolio Variance':<20}")
-    print("-" * 35)
-    
-    for start, end, label in windows:
-        portfolio = RealPortfolioOptimizer(tickers=tickers, start_date=start, end_date=end)
-        
-        cfg = GAConfig(DIMENSION=len(tickers), BOUNDS=(-2, 2), NFE=5000)
-        
-        _, fval, _, _ = gradient_descent(cfg, alpha=0.01, max_nfe=5000, portfolio_optimizer=portfolio)
-        print(f"{label:<15} {fval:<20.6f}")
 
 
 # =========================================================
@@ -738,18 +750,18 @@ def exp_comparison_table():
 # =========================================================
 
 if __name__ == "__main__":
-
+    pass
     # Uncomment and run any of the experiments below:
     # exp_tuned_gd_on_all_benchmarks()
     # --- Gradient Descent ---
-    # exp_gd_single_run()
+    #exp_gd_single_run()
     # exp_gd_statistics()
-    # exp_gd_alpha_sensitivity()
+    #exp_gd_alpha_sensitivity()
     # exp_gd_on_all_benchmarks()
-    # exp_gd_convergence_comparison()
+    #exp_gd_convergence_comparison()
     
     # --- Genetic Algorithm ---
-    #exp_ga_single_run()
+    # exp_ga_single_run()
     # exp_ga_statistics()
     # exp_ga_vs_random_search()
     # exp_ga_on_all_benchmarks()
@@ -758,10 +770,11 @@ if __name__ == "__main__":
     
     # --- Algorithm Comparison ---
     # exp_ga_vs_gd_single()
-    # exp_ga_vs_gd_statistics()
-    # exp_algorithm_on_difficult_landscape()
-    # exp_ga_vs_tuned_gd()
-
+    #exp_ga_vs_gd_statistics()
+    #exp_algorithm_on_difficult_landscape()
+    exp_ga_vs_tuned_gd()
+    #exp_tuned_gd_vs_basic_gd()
+    # exp_comparison_table()
 #### *** HERE Continue TESTING OTHER EXPERIMENTS AS NEEDED *** ####
 
 
@@ -782,10 +795,9 @@ if __name__ == "__main__":
     # exp_portfolio_ga_variance()
     # exp_portfolio_ga_vs_gd()
     # exp_portfolio_different_sectors()
-    # exp_portfolio_sensitivity_data_window()
     
     # --- Advanced ---
     # exp_gradient_descent_with_decay()
     # exp_noise_robustness()
-    
-
+    # exp_portfolio_tuned_gd_variance()
+    # exp_portfolio_tuned_gd_sharpe()

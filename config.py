@@ -35,7 +35,7 @@ class GAConfig:
 
     # Algorithm choice
     ALGORITHM: str = "GD"  # "COMPARE" "GD"
-
+    PORTFOLIO_OBJECTIVE: str = ""
 
 # Create a default instance
 cfg = GAConfig()

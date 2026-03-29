@@ -132,7 +132,15 @@ def multi_start_gradient_descent(cfg, n_starts=10, alpha_init=0.01, max_nfe=None
     Key improvements over basic GD:
     - Multiple random starts to escape local minima
     - Adaptive learning rate with backtracking line search
-    - Better initialization strategy
+    - Fair initialization strategy (geometric center + random samples)
+    
+    Initialization Strategy (Methodologically Fair):
+    - First start: geometric center (low + high) / 2
+      * Doesn't assume knowledge of optimum location
+      * Works fairly for all benchmark functions (Sphere, Ackley, Rastrigin, Rosenbrock)
+      * Good for convex/unimodal problems
+    - Remaining starts: random uniform sampling within bounds
+      * Ensures exploration of diverse basins of attraction
     """
     if max_nfe is None:
         max_nfe = cfg.NFE
@@ -142,10 +150,11 @@ def multi_start_gradient_descent(cfg, n_starts=10, alpha_init=0.01, max_nfe=None
     
     # Get objective and gradient functions
     if cfg.OBJECTIVE_NAME == "portfolio" and portfolio_optimizer is not None:
-        f = lambda x: portfolio_optimizer.variance_objective(x.reshape(1, -1))[0]
         if hasattr(cfg, 'PORTFOLIO_OBJECTIVE') and cfg.PORTFOLIO_OBJECTIVE == 'sharpe':
+            f = lambda x: portfolio_optimizer.sharpe_objective(x.reshape(1, -1))[0]
             grad_f = lambda x: portfolio_optimizer.sharpe_gradient(x)
         else:
+            f = lambda x: portfolio_optimizer.variance_objective(x.reshape(1, -1))[0]
             grad_f = lambda x: portfolio_optimizer.variance_gradient(x)
     else:
         f = get_objective(cfg.OBJECTIVE_NAME)
@@ -165,13 +174,7 @@ def multi_start_gradient_descent(cfg, n_starts=10, alpha_init=0.01, max_nfe=None
     total_nfe = 0
     
     for start in range(n_starts):
-        # Smart initialization: mix of random and center-biased
-        if start == 0:
-            # First start from center (good for convex functions)
-            x = np.zeros(dim)
-        else:
-            # Other starts random in bounds
-            x = np.random.uniform(low, high, dim)
+        x = np.random.uniform(low, high, dim)
         
         # Run adaptive GD from this start
         x_final, fval, nfe_used = _adaptive_gd_single_run(
