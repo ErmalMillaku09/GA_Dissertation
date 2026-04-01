@@ -289,6 +289,16 @@ def run_gd_statistics(cfg):
     return np.array(results)
 
 
+def run_gd_statistics_with_histories(cfg):
+    """Run GD multiple times and return list of final values and histories."""
+    finals = []
+    histories = []
+    for _ in range(cfg.RUNS):
+        _, fval, history, _ = gradient_descent(cfg, alpha=cfg.GD_ALPHA, max_nfe=cfg.NFE)
+        finals.append(fval)
+        histories.append(history)
+    return np.array(finals), np.array(histories)
+
 def run_gd_alpha_sweep(cfg, alphas=None):
     """Sweep alpha values and return list of (alpha, final_value)."""
     if alphas is None:
@@ -318,10 +328,12 @@ def run_ga_vs_gd_statistics(cfg):
     ga_results = []
     gd_results = []
     for _ in range(cfg.RUNS):
-        _, ga_val, _, _ = run_ga(cfg)
-        _, gd_val, _, _ = gradient_descent(cfg, alpha=cfg.GD_ALPHA, max_nfe=cfg.NFE)
-        ga_results.append(ga_val)
-        gd_results.append(gd_val)
+        _, _, best_obj, _ = run_ga(cfg)  # Get best_obj_hist
+        x, fx, history, _ = gradient_descent(cfg, alpha=cfg.GD_ALPHA, max_nfe=cfg.NFE)  # Get final fx
+
+        # Extract FINAL values
+        ga_results.append(best_obj[-1])  # Last element of best objective history
+        gd_results.append(fx)  # Final objective value from GD
 
     print("\n===== GA vs GD (50-run stats) =====")
     print("Algorithm   Mean        Std")
@@ -352,22 +364,24 @@ def run_tuned_gd_statistics(cfg, n_starts=10):
 
 def run_ga_vs_tuned_gd_statistics(cfg, n_starts=10):
     """Compare GA vs tuned GD over multiple runs."""
-    ga_results = []
+    # GA: Extract final value from each run
+    _, all_obj_ga = run_experiment(cfg, runs=cfg.RUNS)
+    ga_results = np.array([float(all_obj_ga[i, -1]) for i in range(len(all_obj_ga))])
+
+    # Tuned GD: Run multiple times with seeding
     gd_tuned_results = []
-    
-    for _ in range(cfg.RUNS):
-        _, ga_val, _, _ = run_ga(cfg)
-        _, gd_val, _ = multi_start_gradient_descent(cfg, n_starts=n_starts, 
-                                                  alpha_init=0.01, max_nfe=cfg.NFE)
-        ga_results.append(ga_val)
+    for r in range(cfg.RUNS):
+        random.seed(r)
+        np.random.seed(r)
+        _, gd_val, _ = multi_start_gradient_descent(cfg, n_starts=n_starts,
+                                                    alpha_init=0.01, max_nfe=cfg.NFE)
         gd_tuned_results.append(gd_val)
 
-    print("\n===== GA vs Tuned GD (multi-start + adaptive) =====")
+    print(f"\n===== GA vs Tuned GD (multi-start + adaptive) | {str(cfg.OBJECTIVE_NAME).capitalize()} =====")
     print("Algorithm      Mean        Std")
     print("-----------------------------------")
     print(f"GA             {np.mean(ga_results):.6f}   {np.std(ga_results):.6f}")
     print(f"Tuned GD       {np.mean(gd_tuned_results):.6f}   {np.std(gd_tuned_results):.6f}")
     print(f"Improvement:   {((np.mean(ga_results) - np.mean(gd_tuned_results)) / np.mean(ga_results) * 100):.1f}%")
-    
-    return np.array(ga_results), np.array(gd_tuned_results)
 
+    return ga_results, np.array(gd_tuned_results)

@@ -67,11 +67,22 @@ def run_ga(cfg, verbose=False, custom_objective=None):
     best_obj_hist = []
     avg_obj_hist = []
 
-    for gen in range(cfg.GENERATIONS):
+    best_x = None
+    best_obj_so_far = np.inf
 
+    for gen in range(cfg.GENERATIONS):
         pop = evolve_one_generation(pop, cfg, custom_objective=custom_objective)
 
         obj, fit = evaluate_population(pop, cfg, custom_objective=custom_objective)
+
+        # best individual in current generation
+        gen_best_idx = np.argmin(obj)
+        gen_best_obj = obj[gen_best_idx]
+
+        # store global best solution
+        if gen_best_obj < best_obj_so_far:
+            best_obj_so_far = gen_best_obj
+            best_x = pop[gen_best_idx].copy()
 
         # ----- fitness -----
         best_fit_hist.append(np.max(fit))
@@ -89,8 +100,8 @@ def run_ga(cfg, verbose=False, custom_objective=None):
             )
 
     return (
+        best_x,
         np.array(best_fit_hist),
-        np.array(avg_fit_hist),
         np.array(best_obj_hist),
         np.array(avg_obj_hist),
     )

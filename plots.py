@@ -178,7 +178,7 @@ def plot_gd_convergence(history, title="Gradient Descent Convergence"):
     plt.show()
 
 
-def plot_gd_alpha_sweep(results):
+def plot_gd_alpha_sweep(results, cfg):
     """
     results: list of (alpha, final_value)
     """
@@ -188,7 +188,7 @@ def plot_gd_alpha_sweep(results):
     plt.figure()
     plt.plot(alphas, values, marker='o')
     plt.xscale("log")
-    plt.title("GD Step Size Sensitivity")
+    plt.title(f"GD Step Size Sensitivity | {cfg.OBJECTIVE_NAME}")
     plt.xlabel("Alpha")
     plt.ylabel("Final Objective Value")
     plt.grid(True)
@@ -207,6 +207,46 @@ def plot_gd_vs_ga_comparison(ga_finals, gd_finals, cfg):
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.show()
 
+
+def plot_gd_statistics(all_histories, cfg):
+    """Plot GD convergence and final distribution, similar to GA."""
+    # Pad histories to same length (in case some runs terminate early)
+    max_len = max(len(h) for h in all_histories)
+    padded_histories = np.array([np.pad(h, (0, max_len - len(h)), constant_values=h[-1]) for h in all_histories])
+
+    mean = np.mean(padded_histories, axis=0)
+    std = np.std(padded_histories, axis=0)
+    nfe = np.arange(len(mean))
+    final_vals = padded_histories[:, -1]
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+    # Convergence
+    for h in padded_histories:
+        ax1.plot(h, color="gray", alpha=0.05)
+    ax1.plot(mean, linewidth=3, label="Mean objective", color="C1")
+    ax1.fill_between(nfe, mean - std, mean + std, alpha=0.25, label="±1 std")
+    ax1.set_xlabel("Function Evaluations (NFE)")
+    ax1.set_ylabel("Objective value")
+    ax1.set_yscale("log")
+    ax1.set_title(f"GD Convergence | {cfg.OBJECTIVE_NAME}")
+    ax1.legend()
+
+    # Final distribution
+    ax2.boxplot(final_vals, widths=0.5)
+    ax2.set_ylabel("Final objective value")
+    ax2.set_yscale("log")
+    ax2.set_title(
+        f"Final Distribution\n"
+        f"mean={final_vals.mean():.3g}  std={final_vals.std():.3g}"
+    )
+
+    fig.suptitle(
+        f"Gradient Descent Performance | {cfg.OBJECTIVE_NAME}",
+        fontsize=14, fontweight="bold"
+    )
+    plt.tight_layout(rect=(0, 0, 1, 0.95))
+    plt.show()
 
 def plot_portfolio_weights(weights, title="Portfolio Weights"):
     """
