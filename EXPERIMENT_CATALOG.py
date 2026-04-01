@@ -296,6 +296,41 @@ def exp_algorithm_on_difficult_landscape():
     print("GA explores multiple solutions simultaneously, finding better regions.")
 
 
+    """Compare tuned GD vs basic GA on Rastrigin to show tuned GD can outperform GA on multi-modal problems.
+    
+    Tuned GD uses multi-start initialization to explore multiple regions,
+    potentially finding better solutions than population-based GA on difficult landscapes.
+    """
+    cfg = GAConfig(
+        OBJECTIVE_NAME="rastrigin",
+        DIMENSION=10,
+        GENERATIONS=200,
+        POP_SIZE=100,
+        RUNS=30,
+        NFE=20000
+    )
+
+    print("\n====== Tuned GD vs GA on Rastrigin (Multi-modal) ======")
+    print("Tuned GD uses 10 random starts, GA uses population-based search")
+
+    # GA
+    ga_results = run_experiment(cfg, runs=30)
+    ga_best = np.mean(ga_results[1][:, -1])
+
+    # Tuned GD (multi-start)
+    tuned_gd_results = run_tuned_gd_statistics(cfg, n_starts=10)
+    tuned_gd_best = np.mean(tuned_gd_results)
+
+    print(f"GA final value: {ga_best:.6f}")
+    print(f"Tuned GD final value: {tuned_gd_best:.6f}")
+    if tuned_gd_best < ga_best:
+        print(f"Tuned GD outperforms GA by {abs(ga_best - tuned_gd_best):.6f}")
+        print("Multi-start GD can find better solutions by exploring multiple starting points.")
+    else:
+        print(f"GA outperforms Tuned GD by {abs(ga_best - tuned_gd_best):.6f}")
+        print("GA's population diversity provides better exploration.")
+
+
 # =========================================================
 # PARAMETER SWEEP EXPERIMENTS
 # =========================================================
@@ -772,7 +807,7 @@ if __name__ == "__main__":
     # exp_ga_vs_gd_single()
     #exp_ga_vs_gd_statistics()
     #exp_algorithm_on_difficult_landscape()
-    exp_ga_vs_tuned_gd()
+    # exp_ga_vs_tuned_gd()
     #exp_tuned_gd_vs_basic_gd()
     # exp_comparison_table()
 #### *** HERE Continue TESTING OTHER EXPERIMENTS AS NEEDED *** ####
@@ -790,7 +825,7 @@ if __name__ == "__main__":
     # exp_comparison_table()
     
     # --- Portfolio Optimization ---
-    # exp_portfolio_gd_variance()
+    #exp_portfolio_gd_variance()
     # exp_portfolio_gd_sharpe()
     # exp_portfolio_ga_variance()
     # exp_portfolio_ga_vs_gd()
@@ -799,5 +834,5 @@ if __name__ == "__main__":
     # --- Advanced ---
     # exp_gradient_descent_with_decay()
     # exp_noise_robustness()
-    # exp_portfolio_tuned_gd_variance()
+    #exp_portfolio_tuned_gd_variance()
     # exp_portfolio_tuned_gd_sharpe()

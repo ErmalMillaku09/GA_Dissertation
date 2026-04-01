@@ -62,11 +62,11 @@ def gradient_descent(cfg, alpha=0.001, max_nfe=None, tol=1e-8, portfolio_optimiz
 
     # Get objective function
     if cfg.OBJECTIVE_NAME == "portfolio" and portfolio_optimizer is not None:
-        # Portfolio: use the passed optimizer
-        f = lambda x: portfolio_optimizer.variance_objective(x.reshape(1, -1))[0]
         if hasattr(cfg, 'PORTFOLIO_OBJECTIVE') and cfg.PORTFOLIO_OBJECTIVE == 'sharpe':
+            f = lambda x: portfolio_optimizer.sharpe_objective(x.reshape(1, -1))[0]
             grad_f = lambda x: portfolio_optimizer.sharpe_gradient(x)
         else:
+            f = lambda x: portfolio_optimizer.variance_objective(x.reshape(1, -1))[0]
             grad_f = lambda x: portfolio_optimizer.variance_gradient(x)
     else:
         # Standard benchmarks

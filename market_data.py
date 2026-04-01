@@ -20,6 +20,8 @@ def download_stock_data(tickers, start_date, end_date):
 
     Returns:
     --------
+    tickers : list
+        List of successfully downloaded tickers
     Sigma : np.array
         Annualized covariance matrix
     mean_returns : np.array
@@ -27,13 +29,17 @@ def download_stock_data(tickers, start_date, end_date):
     prices : pd.DataFrame
         Historical prices for plotting
     """
-    print(f"Downloading data for {tickers}...")
+    print(f"Downloading data for {len(tickers)} stocks...")
 
-    # Download adjusted close prices
-    data = yf.download(tickers, start=start_date, end=end_date, progress=False)
+    # Download adjusted close prices with error handling
+    try:
+        data = yf.download(tickers, start=start_date, end=end_date, progress=False)
+    except Exception as e:
+        print(f"Warning: Download had issues: {e}")
+        data = None
 
     # Check if data is empty
-    if data.empty:
+    if data is None or data.empty:
         raise ValueError(f"No data downloaded for {tickers}. Check ticker symbols and date range.")
 
     # Use Adjusted Close if available, otherwise Close
@@ -44,11 +50,22 @@ def download_stock_data(tickers, start_date, end_date):
     else:
         raise ValueError("No price data available")
 
+    # Drop columns with all NaN or mostly NaN (failed downloads or bad data)
+    # Keep columns that have at least 80% of data
+    min_non_null = len(prices) * 0.8
+    prices = prices.dropna(axis=1, thresh=min_non_null)
+
+    if prices.empty:
+        raise ValueError("No valid price data available after filtering")
+
+    # Forward fill then backward fill to handle small gaps (newer pandas syntax)
+    prices = prices.ffill().bfill()
+
     # Calculate daily returns
     returns = prices.pct_change().dropna()
 
-    if returns.empty:
-        raise ValueError("Not enough price data to calculate returns")
+    if returns.empty or len(returns) < 100:
+        raise ValueError("Not enough valid price data to calculate returns")
 
     # Calculate annualized covariance (252 trading days)
     Sigma = returns.cov() * 252
@@ -56,11 +73,14 @@ def download_stock_data(tickers, start_date, end_date):
     # Calculate annualized mean returns
     mean_returns = returns.mean() * 252
 
-    print(f"Data downloaded: {returns.shape[0]} trading days")
-    print(f"Date range: {returns.index[0].date()} to {returns.index[-1].date()}")
-    print(f"Assets: {list(prices.columns)}")
+    valid_tickers = list(prices.columns)
+    print(f"\nData downloaded successfully!")
+    print(f"  Valid tickers: {len(valid_tickers)}/{len(tickers)}")
+    print(f"  Trading days: {returns.shape[0]}")
+    print(f"  Date range: {returns.index[0].date()} to {returns.index[-1].date()}")
+    print(f"  Assets: {valid_tickers}")
 
-    return Sigma.values, mean_returns.values, prices
+    return valid_tickers, Sigma.values, mean_returns.values, prices
 
 
 def get_tech_stocks():
@@ -71,3 +91,27 @@ def get_tech_stocks():
 def get_diverse_stocks():
     """Return a diverse set of stocks from different sectors"""
     return ['JPM', 'XOM', 'PG', 'JNJ', 'DIS', 'AAPL', 'BA', 'CAT']
+
+
+def get_52_stocks():
+    """Return a list of 50 reliable stocks for portfolio optimization"""
+    return [
+        # Large cap tech
+        'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'META',
+        # Financial
+        'JPM', 'BAC', 'GS', 'MS', 'WFC', 'BLK', 'SPGI',
+        # Healthcare
+        'JNJ', 'UNH', 'PFE', 'ABBV', 'MRK', 'LLY', 'TMO', 'ABT',
+        # Industrials/Consumer
+        'HD', 'WMT', 'MCD', 'COST', 'DIS', 'BA', 'CAT', 'HON',
+        # Energy/Utilities
+        'XOM', 'CVX', 'NEE', 'DUK', 'SO',
+        # Semiconductors
+        'AMD', 'QCOM', 'INTC', 'MU', 'AVGO',
+        # Communications
+        'VZ', 'T', 'CMCSA',
+        # Consumer/Discretionary
+        'NFLX', 'ADBE', 'CRM', 'PYPL', 'V', 'MA',
+        # Industrial
+        'UNP', 'IQV', 'GILD'
+    ]
